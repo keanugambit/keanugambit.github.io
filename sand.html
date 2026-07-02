@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sand Box - Falling Sand Simulation</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  :root{
+    --font:'Courier New',monospace;
+    --ink:#f4ecd8; --edge:#0a0e18;
+    --gold:#ffcf4d; --gold-dk:#9c6d0b;
+    --blue:#3a5aa8; --blue-dk:#1c2a55;
+    --red:#e2513f;  --red-dk:#8f2416;
+  }
+  body{
+    font-family:var(--font); color:var(--ink);
+    background-color:#0b0f1a;
+    background-image:
+      linear-gradient(#ffffff0a 1px,transparent 1px),
+      linear-gradient(90deg,#ffffff0a 1px,transparent 1px);
+    background-size:16px 16px;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    padding:16px; gap:16px; image-rendering:pixelated;
+  }
+  h1{
+    font-size:22px; line-height:1.4; color:var(--gold); letter-spacing:2px; margin:6px 0 2px;
+    text-shadow:3px 3px 0 var(--gold-dk), 6px 6px 0 #000;
+  }
+  .wrap{position:relative; width:min(96vw,720px);}
+  canvas{
+    width:100%; display:block; background:#0c111d;
+    border:4px solid var(--edge); border-radius:0;
+    image-rendering:pixelated; touch-action:none; cursor:crosshair;
+    box-shadow:0 8px 0 #05070d, 8px 8px 0 #05070d;
+  }
+
+  .panel{
+    width:min(96vw,780px); min-height:132px; background:#161d33; border:5px solid var(--edge); border-radius:0;
+    padding:26px 28px; display:flex; flex-wrap:wrap; gap:24px; align-items:center; justify-content:center;
+    box-shadow:0 8px 0 #05070d, inset 4px 4px 0 #ffffff12, inset -4px -4px 0 #00000055;
+  }
+  .group{display:flex; align-items:center; gap:14px}
+  .tools{display:flex; gap:16px}
+
+  /* ---- pixel buttons: hard bevel + solid shadow slab beneath (unpressed) ---- */
+  .tool,.reset{
+    font-family:var(--font); line-height:1; cursor:pointer;
+    border:3px solid var(--edge); border-radius:0; padding:15px 17px;
+    display:flex; align-items:center; gap:7px; white-space:nowrap;
+    position:relative; transition:transform .04s;
+    box-shadow:
+      inset 3px 3px 0 #ffffff59,
+      inset -3px -3px 0 #00000055,
+      0 6px 0 0 var(--btn-sh),
+      0 6px 0 3px var(--edge);
+  }
+  .tool{ background:var(--blue); color:#eaf0ff; --btn-sh:var(--blue-dk); }
+  .tool:hover{ filter:brightness(1.14); }
+  .tool.active{ background:var(--gold); color:var(--edge); --btn-sh:var(--gold-dk); }
+  .reset{ background:var(--red); color:#fff; --btn-sh:var(--red-dk); }
+
+  /* pressed: drop down and lose the shadow slab */
+  .tool:active,.reset:active{
+    transform:translateY(6px);
+    box-shadow:
+      inset 3px 3px 0 #ffffff40,
+      inset -3px -3px 0 #00000055;
+  }
+
+  label{white-space:nowrap; color:var(--ink)}
+  .val{min-width:52px; text-align:left; color:var(--gold)}
+  .sep{width:5px; height:52px; background:var(--edge)}
+
+  /* ---- pixel sliders ---- */
+  input[type=range]{
+    -webkit-appearance:none; appearance:none;
+    width:170px; height:30px; background:transparent; cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:18px; background:#2b3a63; border:4px solid var(--edge); border-radius:0;
+    box-shadow:inset 3px 3px 0 #00000055;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none;
+    width:20px; height:30px; margin-top:-10px;
+    background:var(--gold); border:4px solid var(--edge); border-radius:0;
+    box-shadow:0 5px 0 0 var(--edge);
+  }
+  input[type=range]::-moz-range-track{
+    height:18px; background:#2b3a63; border:4px solid var(--edge); border-radius:0;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:20px; height:30px; background:var(--gold);
+    border:4px solid var(--edge); border-radius:0; box-shadow:0 5px 0 0 var(--edge);
+  }
+
+  .hint{text-align:center; max-width:100%}
+</style>
+</head>
+<body>
+  <h1>SAND BOX</h1>
+  <div class="wrap">
+    <canvas id="c" width="720" height="620"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="tools" id="tools">
+      <button class="tool active" data-tool="add">Add sand</button>
+      <button class="tool" data-tool="dig">Dig</button>
+      <button class="tool" data-tool="hand">Hand</button>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <label for="tilt">Tilt box</label>
+      <input type="range" id="tilt" min="-30" max="30" value="0" step="1">
+      <span class="val" id="tiltv">0°</span>
+    </div>
+    <div class="group">
+      <label for="brush">Brush</label>
+      <input type="range" id="brush" min="2" max="18" value="7" step="1">
+      <span class="val" id="brushv">7</span>
+    </div>
+    <div class="sep"></div>
+    <button class="reset" id="reset">Reset</button>
+  </div>
+  <div class="hint"></div>
+
+<script>
+(() => {
+"use strict";
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// ---------- Grid / box config ----------
+const CELL = 4;                 // display px per cell
+const bw = 520, bh = 380;       // box size in px
+const W = bw / CELL, H = bh / CELL; // grid cells (130 x 95)
+const cx = canvas.width/2, cy = canvas.height/2;
+
+const EMPTY = 0, SAND = 1;
+const grid  = new Uint8Array(W*H);
+const shade = new Uint8Array(W*H);
+const moved = new Uint8Array(W*H);
+const top   = new Int32Array(W);   // surface height of each column (for repose slope)
+
+// Angle of repose ("cleave angle"): sand rests at ~30 degrees.
+// A resting surface grain topples sideways if the surface REACH cells over
+// is lower than it by more than MAXDROP, giving a stable slope MAXDROP/REACH.
+const REACH = 5, MAXDROP = 3;      // atan(3/5) -> ~30 degrees
+
+let A = 0;        // tilt angle in degrees (box rotation, clockwise +)
+let tool = 'add';
+let brush = 7;
+
+// ---------- Sand physics (rotating-gravity cellular automaton) ----------
+const DIRS = [[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]];
+const ANG  = [0,45,90,135,180,-135,-90,-45];
+function angDist(a,b){ let d=((a-b)%360+540)%360-180; return Math.abs(d); }
+function neighborsFor(theta){
+  let best=0,bd=1e9;
+  for(let i=0;i<8;i++){ const d=angDist(ANG[i],theta); if(d<bd){bd=d;best=i;} }
+  const a=(best+1)%8, b=(best+7)%8;
+  let downhill,uphill;
+  if(angDist(ANG[a],theta) <= angDist(ANG[b],theta)){ downhill=a; uphill=b; }
+  else { downhill=b; uphill=a; }
+  return { primary:DIRS[best], downhill:DIRS[downhill], uphill:DIRS[uphill] };
+}
+
+function computeTop(){
+  for(let x=0;x<W;x++){
+    top[x]=H;
+    for(let y=0;y<H;y++){ if(grid[y*W+x]===SAND){ top[x]=y; break; } }
+  }
+}
+
+function step(){
+  moved.fill(0);
+  computeTop();
+  const N = neighborsFor(A);
+  const bias = Math.min(1, Math.abs(A)/25);
+  const pDown = 0.5 + 0.5*bias;   // chance to try the more-downhill slide first
+  const sideBias = A>0 ? 1 : (A<0 ? -1 : 0);   // downhill side under tilt
+  for(let y=H-1;y>=0;y--){
+    const l2r = Math.random()<0.5;
+    for(let k=0;k<W;k++){
+      const x = l2r ? k : W-1-k;
+      const idx = y*W+x;
+      if(grid[idx]!==SAND || moved[idx]) continue;
+
+      // 1) fall / slide with gravity
+      const first  = (Math.random()<pDown) ? N.downhill : N.uphill;
+      const second = (first===N.downhill) ? N.uphill : N.downhill;
+      const cand = [N.primary, first, second];
+      let did=false;
+      for(let c=0;c<3;c++){
+        const nx=x+cand[c][0], ny=y+cand[c][1];
+        if(nx<0||nx>=W||ny<0||ny>=H) continue;
+        const nidx=ny*W+nx;
+        if(grid[nidx]===EMPTY && !moved[nidx]){
+          grid[nidx]=SAND; shade[nidx]=shade[idx]; moved[nidx]=1;
+          grid[idx]=EMPTY; did=true;
+          break;
+        }
+      }
+      if(did) continue;
+
+      // 2) angle-of-repose toppling: only surface grains slide sideways
+      if(y>0 && grid[(y-1)*W+x]===SAND) continue;
+      const sf = sideBias!==0 ? sideBias : (Math.random()<0.5 ? 1 : -1);
+      for(const s of [sf, -sf]){
+        const cxs = x + s*REACH;
+        if(cxs<0 || cxs>=W) continue;
+        if(top[cxs] - y > MAXDROP){          // that side is too steep -> topple
+          const nx = x + s;
+          if(nx<0 || nx>=W) continue;
+          const nidx = y*W+nx;
+          if(grid[nidx]===EMPTY && !moved[nidx]){
+            grid[nidx]=SAND; shade[nidx]=shade[idx]; moved[nidx]=1;
+            grid[idx]=EMPTY;
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---------- Tools ----------
+function paintSand(ccx,ccy,R,on){
+  const R2=R*R;
+  for(let j=ccy-R;j<=ccy+R;j++){
+    if(j<0||j>=H) continue;
+    for(let i=ccx-R;i<=ccx+R;i++){
+      if(i<0||i>=W) continue;
+      const dx=i-ccx, dy=j-ccy; if(dx*dx+dy*dy>R2) continue;
+      const idx=j*W+i;
+      if(on){ if(grid[idx]===EMPTY && Math.random()<0.85){ grid[idx]=SAND; shade[idx]=(70+Math.random()*185)|0; } }
+      else grid[idx]=EMPTY;
+    }
+  }
+}
+
+function handTool(ccx,ccy,R,dx,dy){
+  const R2=R*R;
+  const list=[];
+  for(let j=ccy-R;j<=ccy+R;j++){
+    if(j<0||j>=H) continue;
+    for(let i=ccx-R;i<=ccx+R;i++){
+      if(i<0||i>=W) continue;
+      const rx=i-ccx, ry=j-ccy; if(rx*rx+ry*ry>R2) continue;
+      if(grid[j*W+i]!==SAND) continue;
+      list.push([i,j, rx*dx+ry*dy]);   // proj along drag = leading edge
+    }
+  }
+  list.sort((p,q)=>q[2]-p[2]);          // push the front of the pile first
+  for(const cellp of list){
+    const i=cellp[0], j=cellp[1], idx=j*W+i;
+    if(grid[idx]!==SAND) continue;
+    let vx=(i-ccx)*0.6 + dx*1.6;
+    let vy=(j-ccy)*0.6 + dy*1.6;
+    let sx=Math.sign(vx), sy=Math.sign(vy);
+    if(sx===0 && sy===0) sy=1;
+    const tries=[[sx,sy],[sx,0],[0,sy],[sx, sy? 0 : 1]];
+    for(const t of tries){
+      const tx=t[0], ty=t[1];
+      if(tx===0 && ty===0) continue;
+      const nx=i+tx, ny=j+ty;
+      if(nx<0||nx>=W||ny<0||ny>=H) continue;
+      const nidx=ny*W+nx;
+      if(grid[nidx]===EMPTY){ grid[nidx]=SAND; shade[nidx]=shade[idx]; grid[idx]=EMPTY; break; }
+    }
+  }
+}
+
+// ---------- Pointer ----------
+const ptr = { down:false, col:0, row:0, pcol:0, prow:0, sx:0, sy:0, inside:false };
+function toLocal(clientX,clientY){
+  const r=canvas.getBoundingClientRect();
+  const mx=(clientX-r.left)*(canvas.width/r.width);
+  const my=(clientY-r.top)*(canvas.height/r.height);
+  const dx=mx-cx, dy=my-cy;
+  const rad=-A*Math.PI/180, c=Math.cos(rad), s=Math.sin(rad);
+  const lx=dx*c - dy*s, ly=dx*s + dy*c;
+  return {
+    col:Math.floor((lx+bw/2)/CELL),
+    row:Math.floor((ly+bh/2)/CELL),
+    sx:mx, sy:my
+  };
+}
+function updatePtr(e){
+  const p=toLocal(e.clientX,e.clientY);
+  ptr.pcol=ptr.col; ptr.prow=ptr.row;
+  ptr.col=p.col; ptr.row=p.row; ptr.sx=p.sx; ptr.sy=p.sy;
+  ptr.inside = p.col>=0 && p.col<W && p.row>=0 && p.row<H;
+}
+canvas.addEventListener('pointerdown', e=>{ canvas.setPointerCapture(e.pointerId); updatePtr(e); ptr.pcol=ptr.col; ptr.prow=ptr.row; ptr.down=true; });
+canvas.addEventListener('pointermove', updatePtr);
+addEventListener('pointerup', ()=>{ ptr.down=false; });
+canvas.addEventListener('pointerleave', ()=>{ ptr.inside=false; });
+
+// ---------- Offscreen sand raster ----------
+const off = document.createElement('canvas'); off.width=W; off.height=H;
+const offctx = off.getContext('2d');
+const img = offctx.createImageData(W,H);
+const data = img.data;
+
+function rasterize(){
+  for(let i=0;i<W*H;i++){
+    const o=i*4;
+    if(grid[i]===SAND){
+      const t=shade[i]/255;
+      data[o]   = (198 + t*48)|0;   // R
+      data[o+1] = (150 + t*72)|0;   // G
+      data[o+2] = (86  + t*70)|0;   // B
+      data[o+3] = 255;
+    } else {
+      data[o+3] = 0;
+    }
+  }
+  offctx.putImageData(img,0,0);
+}
+
+// ---------- Render ----------
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+function render(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.rotate(A*Math.PI/180);
+
+  // box interior
+  ctx.fillStyle='#14100a';
+  roundRect(-bw/2-6,-bh/2-6,bw+12,bh+12,12); ctx.fill();
+
+  // sand (scaled from tiny offscreen, crisp)
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(off, -bw/2, -bh/2, bw, bh);
+
+  // box frame (wooden)
+  ctx.lineWidth=8; ctx.strokeStyle='#8a5a2b';
+  roundRect(-bw/2-6,-bh/2-6,bw+12,bh+12,12); ctx.stroke();
+  ctx.lineWidth=2; ctx.strokeStyle='#c98b4b';
+  roundRect(-bw/2-2,-bh/2-2,bw+4,bh+4,9); ctx.stroke();
+
+  ctx.restore();
+
+  // brush cursor
+  if(ptr.inside){
+    ctx.save();
+    ctx.lineWidth=2;
+    ctx.strokeStyle = tool==='dig' ? '#ff8a8a' : tool==='hand' ? '#9ad0ff' : '#ffe08a';
+    ctx.beginPath(); ctx.arc(ptr.sx, ptr.sy, brush*CELL, 0, 7); ctx.stroke();
+    if(tool==='hand'){ ctx.fillStyle='#9ad0ff22'; ctx.fill(); }
+    ctx.restore();
+  }
+}
+
+// ---------- Main loop ----------
+function frame(){
+  if(ptr.down && ptr.inside){
+    if(tool==='add') paintSand(ptr.col,ptr.row,brush,true);
+    else if(tool==='dig') paintSand(ptr.col,ptr.row,brush,false);
+    else if(tool==='hand') handTool(ptr.col,ptr.row,brush, ptr.col-ptr.pcol, ptr.row-ptr.prow);
+  }
+  step();
+  rasterize();
+  render();
+  requestAnimationFrame(frame);
+}
+
+// ---------- Pixel bitmap font (real pixels, drawn as blocks) ----------
+const GLYPHS = {
+' ':["00000","00000","00000","00000","00000","00000","00000"],
+'A':["01110","10001","10001","10001","11111","10001","10001"],
+'B':["11110","10001","10001","11110","10001","10001","11110"],
+'C':["01110","10001","10000","10000","10000","10001","01110"],
+'D':["11110","10001","10001","10001","10001","10001","11110"],
+'E':["11111","10000","10000","11110","10000","10000","11111"],
+'F':["11111","10000","10000","11110","10000","10000","10000"],
+'G':["01110","10001","10000","10111","10001","10001","01110"],
+'H':["10001","10001","10001","11111","10001","10001","10001"],
+'I':["11111","00100","00100","00100","00100","00100","11111"],
+'J':["11111","00010","00010","00010","00010","10010","01100"],
+'K':["10001","10010","10100","11000","10100","10010","10001"],
+'L':["10000","10000","10000","10000","10000","10000","11111"],
+'M':["10001","11011","10101","10101","10001","10001","10001"],
+'N':["10001","10001","11001","10101","10011","10001","10001"],
+'O':["01110","10001","10001","10001","10001","10001","01110"],
+'P':["11110","10001","10001","11110","10000","10000","10000"],
+'Q':["01110","10001","10001","10001","10101","10010","01101"],
+'R':["11110","10001","10001","11110","10100","10010","10001"],
+'S':["01111","10000","10000","01110","00001","00001","11110"],
+'T':["11111","00100","00100","00100","00100","00100","00100"],
+'U':["10001","10001","10001","10001","10001","10001","01110"],
+'V':["10001","10001","10001","10001","10001","01010","00100"],
+'W':["10001","10001","10001","10101","10101","11011","10001"],
+'X':["10001","10001","01010","00100","01010","10001","10001"],
+'Y':["10001","10001","01010","00100","00100","00100","00100"],
+'Z':["11111","00001","00010","00100","01000","10000","11111"],
+'0':["01110","10001","10011","10101","11001","10001","01110"],
+'1':["00100","01100","00100","00100","00100","00100","01110"],
+'2':["01110","10001","00001","00110","01000","10000","11111"],
+'3':["11111","00010","00100","00010","00001","10001","01110"],
+'4':["00010","00110","01010","10010","11111","00010","00010"],
+'5':["11111","10000","11110","00001","00001","10001","01110"],
+'6':["00110","01000","10000","11110","10001","10001","01110"],
+'7':["11111","00001","00010","00100","01000","01000","01000"],
+'8':["01110","10001","10001","01110","10001","10001","01110"],
+'9':["01110","10001","10001","01111","00001","00010","01100"],
+'-':["00000","00000","00000","11111","00000","00000","00000"],
+'.':["00000","00000","00000","00000","00000","01100","01100"],
+'°':["01100","10010","10010","01100","00000","00000","00000"]
+};
+function pixelCanvas(text, px, color, shadow){
+  text = (text==null?'':''+text).toUpperCase();
+  const GW=5, GH=7, GAP=1;
+  const sh = shadow ? px : 0;
+  const cn = document.createElement('canvas');
+  cn.width  = text.length*(GW+GAP)*px + sh;
+  cn.height = GH*px + sh;
+  cn.style.imageRendering='pixelated';
+  cn.style.display='block';
+  cn.style.maxWidth='100%';
+  const c = cn.getContext('2d');
+  function paint(ox,oy,col){
+    c.fillStyle=col;
+    for(let i=0;i<text.length;i++){
+      const g=GLYPHS[text[i]]||GLYPHS[' '];
+      for(let r=0;r<GH;r++){ const row=g[r];
+        for(let q=0;q<GW;q++){ if(row[q]==='1') c.fillRect(ox+(i*(GW+GAP)+q)*px, oy+r*px, px, px); } }
+    }
+  }
+  if(shadow) paint(sh,sh,shadow);
+  paint(0,0,color);
+  return cn;
+}
+function setPixel(elm, text, px, color, shadow){
+  if(!elm) return;
+  elm.textContent='';
+  elm.appendChild(pixelCanvas(text,px,color,shadow));
+}
+
+// ---------- Controls ----------
+const el=id=>document.getElementById(id);
+const LABELS={ add:'ADD SAND', dig:'DIG', hand:'HAND' };
+function refreshTools(){
+  document.querySelectorAll('.tool').forEach(b=>{
+    const on=b.classList.contains('active');
+    setPixel(b, LABELS[b.dataset.tool], 4, on ? '#0a0e18' : '#eaf0ff');
+  });
+}
+el('tools').addEventListener('click', e=>{
+  const b=e.target.closest('.tool'); if(!b) return;
+  tool=b.dataset.tool;
+  document.querySelectorAll('.tool').forEach(t=>t.classList.toggle('active', t===b));
+  refreshTools();
+});
+el('tilt').addEventListener('input', e=>{ A=+e.target.value; setPixel(el('tiltv'), A+'°', 3, '#ffcf4d'); });
+el('brush').addEventListener('input', e=>{ brush=+e.target.value; setPixel(el('brushv'), ''+brush, 3, '#ffcf4d'); });
+el('reset').addEventListener('click', reset);
+
+function initPixelUI(){
+  setPixel(document.querySelector('h1'), 'SAND BOX', 6, '#ffcf4d', '#05070d');
+  setPixel(document.querySelector('label[for=tilt]'),  'TILT BOX', 3, '#f4ecd8');
+  setPixel(document.querySelector('label[for=brush]'), 'BRUSH',    3, '#f4ecd8');
+  setPixel(el('reset'), 'RESET', 4, '#ffffff');
+  setPixel(document.querySelector('.hint'),
+    'PICK A TOOL AND DRAG ON THE BOX. TILT TO SLIDE.', 2, '#b9c3e0');
+  refreshTools();
+  setPixel(el('tiltv'), A+'°', 3, '#ffcf4d');
+  setPixel(el('brushv'), ''+brush, 3, '#ffcf4d');
+}
+
+function reset(){
+  grid.fill(EMPTY);
+  const t=Math.floor(H*0.55);
+  for(let y=t;y<H;y++) for(let x=0;x<W;x++){ grid[y*W+x]=SAND; shade[y*W+x]=(90+Math.random()*160)|0; }
+  A=0; el('tilt').value=0; setPixel(el('tiltv'), '0°', 3, '#ffcf4d');
+}
+
+reset();
+initPixelUI();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
