@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keanu Wong</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  :root{
+    --ink:#f4ecd8; --edge:#0a0e18;
+    --gold:#ffcf4d; --gold-dk:#9c6d0b;
+    --blue:#3a5aa8; --blue-dk:#1c2a55;
+  }
+  body{
+    font-family:'Courier New',monospace; color:var(--ink);
+    background-color:#0b0f1a;
+    background-image:
+      linear-gradient(#ffffff0a 1px,transparent 1px),
+      linear-gradient(90deg,#ffffff0a 1px,transparent 1px);
+    background-size:16px 16px;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:34px; padding:24px; text-align:center; image-rendering:pixelated;
+  }
+  .stack{display:flex; flex-direction:column; align-items:center; gap:22px}
+  .card{
+    background:#161d33; border:5px solid var(--edge); border-radius:0;
+    padding:40px 44px; display:flex; flex-direction:column; align-items:center; gap:26px;
+    box-shadow:0 8px 0 #05070d, inset 4px 4px 0 #ffffff12, inset -4px -4px 0 #00000055;
+  }
+  canvas{image-rendering:pixelated; display:block; max-width:100%}
+
+  /* pixel button: hard bevel + solid shadow slab beneath (unpressed) */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    border:3px solid var(--edge); border-radius:0; padding:18px 22px; cursor:pointer;
+    background:var(--gold); --btn-sh:var(--gold-dk); text-decoration:none;
+    transition:transform .04s;
+    box-shadow:
+      inset 3px 3px 0 #ffffff66,
+      inset -3px -3px 0 #00000055,
+      0 7px 0 0 var(--btn-sh),
+      0 7px 0 3px var(--edge);
+  }
+  .btn:hover{ filter:brightness(1.06); }
+  .btn:active{
+    transform:translateY(7px);
+    box-shadow:
+      inset 3px 3px 0 #ffffff40,
+      inset -3px -3px 0 #00000055;
+  }
+</style>
+</head>
+<body>
+  <div class="stack">
+    <div id="title"></div>
+    <div id="tag"></div>
+  </div>
+  <div class="card">
+    <a class="btn" id="playBtn" href="sand.html"></a>
+  </div>
+  <div id="foot"></div>
+
+<script>
+(() => {
+"use strict";
+const GLYPHS = {
+' ':["00000","00000","00000","00000","00000","00000","00000"],
+'A':["01110","10001","10001","10001","11111","10001","10001"],'B':["11110","10001","10001","11110","10001","10001","11110"],
+'C':["01110","10001","10000","10000","10000","10001","01110"],'D':["11110","10001","10001","10001","10001","10001","11110"],
+'E':["11111","10000","10000","11110","10000","10000","11111"],'F':["11111","10000","10000","11110","10000","10000","10000"],
+'G':["01110","10001","10000","10111","10001","10001","01110"],'H':["10001","10001","10001","11111","10001","10001","10001"],
+'I':["11111","00100","00100","00100","00100","00100","11111"],'J':["11111","00010","00010","00010","00010","10010","01100"],
+'K':["10001","10010","10100","11000","10100","10010","10001"],'L':["10000","10000","10000","10000","10000","10000","11111"],
+'M':["10001","11011","10101","10101","10001","10001","10001"],'N':["10001","10001","11001","10101","10011","10001","10001"],
+'O':["01110","10001","10001","10001","10001","10001","01110"],'P':["11110","10001","10001","11110","10000","10000","10000"],
+'Q':["01110","10001","10001","10001","10101","10010","01101"],'R':["11110","10001","10001","11110","10100","10010","10001"],
+'S':["01111","10000","10000","01110","00001","00001","11110"],'T':["11111","00100","00100","00100","00100","00100","00100"],
+'U':["10001","10001","10001","10001","10001","10001","01110"],'V':["10001","10001","10001","10001","10001","01010","00100"],
+'W':["10001","10001","10001","10101","10101","11011","10001"],'X':["10001","10001","01010","00100","01010","10001","10001"],
+'Y':["10001","10001","01010","00100","00100","00100","00100"],'Z':["11111","00001","00010","00100","01000","10000","11111"],
+'0':["01110","10001","10011","10101","11001","10001","01110"],'1':["00100","01100","00100","00100","00100","00100","01110"],
+'2':["01110","10001","00001","00110","01000","10000","11111"],'3':["11111","00010","00100","00010","00001","10001","01110"],
+'4':["00010","00110","01010","10010","11111","00010","00010"],'5':["11111","10000","11110","00001","00001","10001","01110"],
+'6':["00110","01000","10000","11110","10001","10001","01110"],'7':["11111","00001","00010","00100","01000","01000","01000"],
+'8':["01110","10001","10001","01110","10001","10001","01110"],'9':["01110","10001","10001","01111","00001","00010","01100"],
+'-':["00000","00000","00000","11111","00000","00000","00000"],'.':["00000","00000","00000","00000","00000","01100","01100"],
+'!':["00100","00100","00100","00100","00100","00000","00100"]
+};
+function pixelCanvas(text, px, color, shadow){
+  text = (text==null?'':''+text).toUpperCase();
+  const GW=5, GH=7, GAP=1; const sh = shadow ? px : 0;
+  const cn = document.createElement('canvas');
+  cn.width  = text.length*(GW+GAP)*px + sh;
+  cn.height = GH*px + sh;
+  cn.style.imageRendering='pixelated'; cn.style.display='block'; cn.style.maxWidth='100%';
+  const c = cn.getContext('2d');
+  function paint(ox,oy,col){
+    c.fillStyle=col;
+    for(let i=0;i<text.length;i++){
+      const g=GLYPHS[text[i]]||GLYPHS[' '];
+      for(let r=0;r<GH;r++){ const row=g[r];
+        for(let q=0;q<GW;q++){ if(row[q]==='1') c.fillRect(ox+(i*(GW+GAP)+q)*px, oy+r*px, px, px); } }
+    }
+  }
+  if(shadow) paint(sh,sh,shadow);
+  paint(0,0,color);
+  return cn;
+}
+function setPixel(id, text, px, color, shadow){
+  const elm=document.getElementById(id); if(!elm) return;
+  elm.textContent=''; elm.appendChild(pixelCanvas(text,px,color,shadow));
+}
+setPixel('title', 'KEANU WONG', 8, '#ffcf4d', '#05070d');
+setPixel('tag',   'WELCOME TO MY SITE', 3, '#b9c3e0');
+setPixel('playBtn', 'PLAY WITH SAND', 5, '#0a0e18');
+setPixel('foot',  'BUILT WITH PIXELS.', 2, '#5b688a');
+})();
+</script>
+</body>
+</html>
