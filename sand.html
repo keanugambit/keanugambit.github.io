@@ -106,14 +106,9 @@
     </div>
     <div class="sep"></div>
     <div class="group">
-      <label for="tilt">Tilt box</label>
-      <input type="range" id="tilt" min="-180" max="180" value="0" step="1">
-      <span class="val" id="tiltv">0°</span>
-    </div>
-    <div class="group">
       <label for="brush">Brush</label>
-      <input type="range" id="brush" min="2" max="18" value="7" step="1">
-      <span class="val" id="brushv">7</span>
+      <input type="range" id="brush" min="3" max="30" value="12" step="1">
+      <span class="val" id="brushv">12</span>
     </div>
     <div class="sep"></div>
     <button class="reset" id="reset">Reset</button>
@@ -125,7 +120,7 @@
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 // ---------- Grid / box config ----------
-const CELL = 4;                 // display px per cell
+const CELL = 2;                 // display px per cell (finer grid = smoother tilted edges)
 const bw = 520, bh = 380;       // box size in px
 const W = bw / CELL, H = bh / CELL; // grid cells (130 x 95)
 const cx = canvas.width/2, cy = canvas.height/2;
@@ -138,7 +133,8 @@ const moved = new Uint8Array(W*H);
 const REACH = 5, MAXDROP = 3;      // atan(3/5) -> ~30 degrees
 let A = 0;        // tilt angle in degrees (box rotation, clockwise +)
 let tool = 'add';
-let brush = 7;
+let brush = 12;
+const SUBSTEPS = 2;   // physics steps per frame (faster flow + settle)
 // ---------- Sand physics (rotating-gravity cellular automaton) ----------
 const DIRS = [[0,1],[1,1],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]];
 const ANG  = [0,45,90,135,180,-135,-90,-45];
@@ -360,7 +356,7 @@ function frame(){
     else if(tool==='dig') paintSand(ptr.col,ptr.row,brush,false);
     else if(tool==='hand') handTool(ptr.col,ptr.row,brush, ptr.col-ptr.pcol, ptr.row-ptr.prow);
   }
-  step();
+  for(let s=0;s<SUBSTEPS;s++) step();
   rasterize();
   render();
   requestAnimationFrame(frame);
